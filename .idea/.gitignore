@@ -1,0 +1,11 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+/.idea
+/.project
+/.pydevproject
+*__pycache__*
+*.egg-info
+.settings/
+target/*
+venv/
