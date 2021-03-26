@@ -1,3 +1,11 @@
+import numpy as np
+import pandas as pd
+import nltk
+import re
+import os
+import codecs
+from sklearn import feature_extraction
+import mpld3
 import http.client
 import json
 
@@ -6,6 +14,7 @@ import json
 # parse output data format
 
 accesstoken = 'LUQt20DQQsBGm9SiI6clRiCuTPG2'
+business_unit = 'srf' # srf, rtr, rts, rsi
 
 def http_request(path):
     # create request
@@ -55,7 +64,8 @@ def get_video_data_by_date(date, business_unit):
         if 'show' in list_item:
             result_item['show_id'] = list_item['show']['id']
             result_item['show_title'] = list_item['show']['title']
-            result_item['show_description'] = list_item['show']['description']
+            if 'description' in list_item['show']:
+                result_item['show_description'] = list_item['show']['description']
             # result_item['show_vendor'] = list_item['show']['vendor']
             # result_item['show_transmission'] = list_item['show']['transmission']
         else:
@@ -76,7 +86,7 @@ def get_video_data_by_date(date, business_unit):
 query for the show metadata, specifically for the metadata to each episode that this show has.
 """
 def get_show_metadata(episode_id, business_unit):
-    path = "/videometadata/v2/latest_episodes/shows/{}?bu={}&pageSize={}".format(episode_id, business_unit, 100)
+    path = "/videometadata/v2/latest_episodes/shows/{}?bu={}&pageSize={}".format(episode_id, business_unit, 3)
     data = http_request(path)
 
     if 'next' in data:
@@ -88,43 +98,49 @@ def get_show_metadata(episode_id, business_unit):
         'id': data['show']['id'],
         'vendor': data['show']['vendor'],
         'title': data['show']['title'],
-        'description': data['show']['description']
     }
+    if 'description' in data['show']:
+        show_data['description'] = data['show']['description']
     if 'lead' in data['show']:
         show_data['lead']: data['show']['lead']
 
     medias = []
     episodes = []
-    for list_item in data['episodeList']:
-        episode_item = {
-            'id': list_item['id'],
-            'title': list_item['id'],
-            'show': show_data
-        }
-        if 'description' in list_item:
-            episode_item['description'] = list_item['description']
-        if 'lead' in list_item:
-            episode_item['lead'] = list_item['lead']
-        if 'socialCount' in list_item and list_item['socialCount']['key'] is 'srgviews':
-            episode_item['srgviews']: list_item['socialCount']['value']
-
-        for media_list_item in list_item['mediaList']:
-            media_element = {
-                'id': media_list_item['id'],
-                'episode_id': episode_item['id'],
-                'title': media_list_item['title']
+    if 'episodeList' in data:
+        for list_item in data['episodeList']:
+            episode_item = {
+                'id': list_item['id'],
+                'title': list_item['title'],
+                'show': show_data
             }
-            if 'description' in media_list_item:
-                media_element['description'] = media_list_item['description']
-            if 'lead' in media_list_item:
-                element['lead'] = media_list_item['lead']
-            medias.append(media_element)
+            if 'description' in list_item:
+                episode_item['description'] = list_item['description']
+            if 'description' in list_item:
+                episode_item['description'] = list_item['description']
+            if 'lead' in list_item:
+                episode_item['lead'] = list_item['lead']
+            if 'socialCount' in list_item and list_item['socialCount']['key'] == 'srgviews':
+                episode_item['srgviews']: list_item['socialCount']['value']
 
-        episodes.append(episode_item)
+            for media_list_item in list_item['mediaList']:
+                media_element = {
+                    'id': media_list_item['id'],
+                    'episode_id': episode_item['id'],
+                    'title': media_list_item['title']
+                }
+                if 'description' in media_list_item:
+                    media_element['description'] = media_list_item['description']
+                if 'lead' in media_list_item:
+                    element['lead'] = media_list_item['lead']
+                medias.append(media_element)
+
+            episodes.append(episode_item)
 
     return episodes, medias
 
 
+"""
+query for additional information such as likes, clicks, and shares"""
 def get_media_metadata(media_id, business_unit):
     path = "/videometadata/v2/{}/mediaComposition?bu={}".format(media_id, business_unit)
     print(path)
@@ -133,10 +149,19 @@ def get_media_metadata(media_id, business_unit):
 
 
 if __name__ == '__main__':
-    date_data = get_video_data_by_date('2021-03-20', 'srf')
+    # TODO: this currently only queries for one day as seed, but we would like to have an iterator over the last n days.
+    show_data = get_video_data_by_date('2021-03-20', business_unit)
+
     episode_data = []
     media_data = []
-    for element in date_data:
-        episodes, medias = get_show_metadata(element['show_id'], 'srf')
+
+    for element in show_data:
+        episodes, medias = get_show_metadata(element['show_id'], business_unit)
         episode_data.extend(episodes)
         media_data.extend(medias)
+
+    to_cluster = ()
+    for media in media_data:
+        cluster_input = {'id': media['id']}
+        cluster_input['text']: media['description']
+        to_cluster.append(cluster_input)
